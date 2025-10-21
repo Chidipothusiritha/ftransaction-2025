@@ -11,6 +11,83 @@ The project demonstrates:
 - Flask-based SQL console for secure querying and updates and to display input/output  
 - Modular structure ready for automation, dashboards, or ML extension
 
+SCHEMA DESIGN:
+
+CREATE TABLE IF NOT EXISTS customers (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(120) UNIQUE,
+  signup_ts TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+  id SERIAL PRIMARY KEY,
+  customer_id INT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  account_type VARCHAR(20) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'Active',
+  opened_ts TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS merchants (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  category VARCHAR(50),
+  risk_tier VARCHAR(10)
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id SERIAL PRIMARY KEY,
+  account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  merchant_id INT NOT NULL REFERENCES merchants(id),
+  amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  ts TIMESTAMP NOT NULL DEFAULT NOW(),
+  status txn_status_enum NOT NULL DEFAULT 'approved'
+);
+
+CREATE TABLE IF NOT EXISTS alerts (
+  id SERIAL PRIMARY KEY,
+  transaction_id INT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  rule_code VARCHAR(50) NOT NULL,
+  created_ts TIMESTAMP NOT NULL DEFAULT NOW(),
+  severity alert_severity_enum NOT NULL DEFAULT 'med',
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status alert_status_enum NOT NULL DEFAULT 'open',
+  CONSTRAINT ux_alert_unique_per_rule UNIQUE (transaction_id, rule_code)
+);
+
+CREATE TABLE IF NOT EXISTS devices (
+  id SERIAL PRIMARY KEY,
+  customer_id INT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  fingerprint VARCHAR(128) NOT NULL,
+  first_seen_ts TIMESTAMP NOT NULL DEFAULT NOW(),
+  last_seen_ts TIMESTAMP,
+  label VARCHAR(100),
+  CONSTRAINT ux_devices_customer_fingerprint UNIQUE (customer_id, fingerprint)
+);
+
+CREATE TABLE IF NOT EXISTS device_events (
+  id SERIAL PRIMARY KEY,
+  device_id INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  event_type VARCHAR(30) NOT NULL,
+  ip_addr INET,
+  user_agent TEXT,
+  geo_city VARCHAR(80),
+  geo_country VARCHAR(80),
+  created_ts TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  customer_id INT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  channel VARCHAR(20) NOT NULL DEFAULT 'in_app',   -- 'in_app','email','sms'
+  title VARCHAR(120) NOT NULL,
+  body TEXT NOT NULL,
+  created_ts TIMESTAMP NOT NULL DEFAULT NOW(),
+  meta JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+
 
 MIDTERM DEMO QUERIES:
 
