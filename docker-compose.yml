@@ -1,0 +1,19 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:16
+    container_name: frauddb
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: frauddb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/20-seed.sql:ro
+
+volumes:
+  pg_data:
