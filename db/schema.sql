@@ -208,3 +208,11 @@ BEGIN
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE TABLE IF NOT EXISTS customer_auth (
+  customer_id    BIGINT PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
+  email          CITEXT UNIQUE NOT NULL,
+  password_hash  TEXT NOT NULL,
+  created_ts     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login_ts  TIMESTAMPTZ
+);
