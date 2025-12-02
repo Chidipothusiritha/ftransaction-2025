@@ -13,6 +13,12 @@ import psycopg
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
 
+from app.db_utils import (
+    list_txns_joined, list_alerts_joined, list_devices_joined,
+    get_transaction_detail, add_transaction, update_alert_status,
+    list_customers, list_accounts, list_merchants
+)
+
 load_dotenv()
 
 # ------------------------ Config ------------------------
@@ -268,8 +274,7 @@ BASE = """
 </html>
 """
 
-from flask import render_template_string
-app.jinja_env.globals["is_admin"] = is_admin  # available in all templates
+app.jinja_env.globals["is_admin"] = is_admin  # make helper available in templates
 
 def render_page(content_tpl: str, **ctx):
     """Render inner content first, then inject HTML into BASE."""
@@ -375,7 +380,7 @@ def customers_page():
     content = """
     <div class="card shadow-sm mb-3">
       <div class="card-body">
-        <h4 class="card-title mb-3">Create Customer</h4>
+        <h4 class="card-title mb-2">Create Customer</h4>
         <form method="post" action="{{ url_for('create_customer') }}" class="row g-2">
           <div class="col-md-4"><label class="form-label">Name</label><input name="name" class="form-control" required></div>
           <div class="col-md-4"><label class="form-label">Email</label><input name="email" type="email" class="form-control" required></div>
@@ -1078,4 +1083,4 @@ def portal_home():
 
 # ------------------------ Run ------------------------
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5001, debug=True)
+    app.run(host="127.0.0.1", port=int(os.getenv("PORT", "5001")), debug=True)

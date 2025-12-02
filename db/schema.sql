@@ -1,11 +1,20 @@
-DO $$ BEGIN CREATE TYPE txn_status_enum AS ENUM ('approved','declined','reversed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE alert_status_enum AS ENUM ('open','cleared','confirmed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE alert_severity_enum AS ENUM ('low','med','high'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- =========================================
+-- SCHEMA: Financial Transaction Monitoring
+-- =========================================
+
+-- Enums (idempotent)
+DO $$ BEGIN CREATE TYPE txn_status_enum   AS ENUM ('approved','declined','reversed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE alert_status_enum AS ENUM ('open','cleared','confirmed');     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE alert_severity_enum AS ENUM ('low','med','high');             EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- -----------------------------
+-- Core Tables
+-- -----------------------------
 
 CREATE TABLE IF NOT EXISTS customers (
   id SERIAL PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
-  email VARCHAR(120) UNIQUE,
+  email VARCHAR(120) UNIQUE,         -- UNIQUE defined inline (keep this)
   signup_ts TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -45,10 +54,14 @@ CREATE TABLE IF NOT EXISTS alerts (
   CONSTRAINT ux_alert_unique_per_rule UNIQUE (transaction_id, rule_code)
 );
 
+-- Helpful indexes
 CREATE INDEX IF NOT EXISTS ix_txn_account_ts  ON transactions (account_id, ts DESC);
 CREATE INDEX IF NOT EXISTS ix_txn_merchant_ts ON transactions (merchant_id, ts DESC);
 CREATE INDEX IF NOT EXISTS ix_alerts_status   ON alerts (status, created_ts DESC);
 
+-- -----------------------------
+-- Rule: Amount Spike
+-- -----------------------------
 CREATE OR REPLACE FUNCTION rule_amount_spike(txn_id INT)
 RETURNS VOID AS $$
 DECLARE v_amount NUMERIC(12,2);
@@ -68,7 +81,7 @@ $$ LANGUAGE plpgsql;
 -- DEVICE + NOTIFICATION SUPPORT
 -- ============================
 
--- 1) Devices table
+-- 1) Devices table (note the built-in unique constraint)
 CREATE TABLE IF NOT EXISTS devices (
   id SERIAL PRIMARY KEY,
   customer_id INT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
@@ -76,7 +89,7 @@ CREATE TABLE IF NOT EXISTS devices (
   first_seen_ts TIMESTAMP NOT NULL DEFAULT NOW(),
   last_seen_ts TIMESTAMP,
   label VARCHAR(100),
-  CONSTRAINT ux_devices_customer_fingerprint UNIQUE (customer_id, fingerprint)
+  CONSTRAINT ux_devices_customer_fingerprint UNIQUE (customer_id, fingerprint) -- UNIQUE defined here
 );
 
 -- 2) Device events
@@ -95,7 +108,7 @@ CREATE TABLE IF NOT EXISTS device_events (
 ALTER TABLE IF EXISTS transactions
   ADD COLUMN IF NOT EXISTS device_id INT REFERENCES devices(id);
 
--- 4) Notifications table (logs alerts sent to users)
+-- 4) Notifications table
 CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
   customer_id INT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
@@ -106,7 +119,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   meta JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
--- 5) New rule: NEW_DEVICE
+-- 5) Rule: NEW_DEVICE
 CREATE OR REPLACE FUNCTION rule_new_device(txn_id INT)
 RETURNS INT AS $$
 DECLARE
@@ -124,6 +137,7 @@ BEGIN
     RETURN NULL;
   END IF;
 
+  -- "New" = device created within the last minute
   IF EXISTS (
      SELECT 1 FROM devices d
      WHERE d.id = v_dev AND d.first_seen_ts > now() - interval '1 minute'
@@ -169,7 +183,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- ===== Velocity rule: 3 or more transactions in 2 minutes per account
+-- 7) Rule: velocity (3 txns in 2 min for same account)
 CREATE OR REPLACE FUNCTION rule_velocity_3in2min(txn_id INT)
 RETURNS INT AS $$
 DECLARE
@@ -209,6 +223,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Auth table for user portal
 CREATE TABLE IF NOT EXISTS customer_auth (
   customer_id    BIGINT PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
   email          CITEXT UNIQUE NOT NULL,
@@ -216,3 +231,25 @@ CREATE TABLE IF NOT EXISTS customer_auth (
   created_ts     TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_login_ts  TIMESTAMPTZ
 );
+
+-- Idempotent unique constraint on merchants.name
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'merchants_name_key'
+  ) THEN
+    ALTER TABLE merchants
+      ADD CONSTRAINT merchants_name_key UNIQUE (name);
+  END IF;
+END $$;
+
+-- Idempotent unique constraint on (accounts.customer_id, account_type)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'accounts_customer_type_key'
+  ) THEN
+    ALTER TABLE accounts
+      ADD CONSTRAINT accounts_customer_type_key UNIQUE (customer_id, account_type);
+  END IF;
+END $$;

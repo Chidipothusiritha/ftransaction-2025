@@ -17,7 +17,7 @@ def cmd_add_transaction(args):
     if alerts:
         print("Alert(s) created:")
         for a in alerts:
-            print(f"  - Alert #{a[0]} | rule={a[1]} | sev={a[2]} | status={a[3]} | at={a[4]} | details={a[5]}")
+            print(f"  - Alert #{a['id']} | rule={a['rule_code']} | sev={a['severity']} | status={a['status']} | at={a['created_ts']} | details={a['details']}")
     else:
         print("No alerts created.")
 

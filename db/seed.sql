@@ -1,7 +1,5 @@
 /* CUSTOMERS */
 INSERT INTO customers (name, email) VALUES
-  ('Ava Patel','ava@example.com'),
-  ('Noah Chen','noah@example.com'),
   ('Sanjitha Rajesh','sanjitha@example.com'),
   ('Siritha Chidipothu','siri@example.com'),
   ('Jack Doe','jack@example.com')
@@ -16,34 +14,9 @@ INSERT INTO merchants (name, category, risk_tier) VALUES
   ('Zara','Shopping','Med')
 ON CONFLICT (name) DO NOTHING;
 
-/*  ACCOUNTS (refer by customer email) */
--- Ava: Checking + Savings
-INSERT INTO accounts (customer_id, account_type, status)
-SELECT c.id, 'Checking', 'Active'
-FROM customers c
-WHERE c.email = 'ava@example.com'
-  AND NOT EXISTS (
-    SELECT 1 FROM accounts a WHERE a.customer_id = c.id AND a.account_type = 'Checking'
-  );
+/* ACCOUNTS (refer by customer email) */
 
-INSERT INTO accounts (customer_id, account_type, status)
-SELECT c.id, 'Savings', 'Active'
-FROM customers c
-WHERE c.email = 'ava@example.com'
-  AND NOT EXISTS (
-    SELECT 1 FROM accounts a WHERE a.customer_id = c.id AND a.account_type = 'Savings'
-  );
-
--- Noah: Checking
-INSERT INTO accounts (customer_id, account_type, status)
-SELECT c.id, 'Checking', 'Active'
-FROM customers c
-WHERE c.email = 'noah@example.com'
-  AND NOT EXISTS (
-    SELECT 1 FROM accounts a WHERE a.customer_id = c.id AND a.account_type = 'Checking'
-  );
-
--- Sanjitha: Checking
+-- Sanjitha: Checking + Savings
 INSERT INTO accounts (customer_id, account_type, status)
 SELECT c.id, 'Checking', 'Active'
 FROM customers c
@@ -52,7 +25,15 @@ WHERE c.email = 'sanjitha@example.com'
     SELECT 1 FROM accounts a WHERE a.customer_id = c.id AND a.account_type = 'Checking'
   );
 
--- Siritha: Checking
+INSERT INTO accounts (customer_id, account_type, status)
+SELECT c.id, 'Savings', 'Active'
+FROM customers c
+WHERE c.email = 'sanjitha@example.com'
+  AND NOT EXISTS (
+    SELECT 1 FROM accounts a WHERE a.customer_id = c.id AND a.account_type = 'Savings'
+  );
+
+-- Siri: Checking
 INSERT INTO accounts (customer_id, account_type, status)
 SELECT c.id, 'Checking', 'Active'
 FROM customers c
@@ -74,18 +55,18 @@ WHERE c.email = 'jack@example.com'
 INSERT INTO devices (customer_id, fingerprint, label, first_seen_ts, last_seen_ts)
 SELECT c.id, 'hash_abc123', 'Mac Safari', NOW(), NOW()
 FROM customers c
-WHERE c.email = 'ava@example.com'
-ON CONFLICT (fingerprint) DO NOTHING;
+WHERE c.email = 'sanjitha@example.com'
+ON CONFLICT (customer_id, fingerprint) DO NOTHING;
 
 INSERT INTO devices (customer_id, fingerprint, label, first_seen_ts, last_seen_ts)
 SELECT c.id, 'hash_xyz222', 'iPhone 15', NOW(), NOW()
 FROM customers c
-WHERE c.email = 'noah@example.com'
-ON CONFLICT (fingerprint) DO NOTHING;
+WHERE c.email = 'siri@example.com'
+ON CONFLICT (customer_id, fingerprint) DO NOTHING;
 
 /* TRANSACTIONS (refer by email/type & merchant name) */
 
--- One normal txn: Ava @ TechStore 
+-- Sanjitha (Checking) @ TechStore 
 INSERT INTO transactions (account_id, merchant_id, amount, currency, status, device_id)
 SELECT
   a.id,
@@ -95,31 +76,14 @@ SELECT
 FROM accounts a
 JOIN customers c ON c.id = a.customer_id
 JOIN merchants m ON m.name = 'TechStore'
-LEFT JOIN devices d ON d.fingerprint = 'hash_abc123'
-WHERE c.email = 'ava@example.com' AND a.account_type = 'Checking'
+LEFT JOIN devices d ON d.fingerprint = 'hash_abc123' AND d.customer_id = c.id
+WHERE c.email = 'sanjitha@example.com' AND a.account_type = 'Checking'
   AND NOT EXISTS (
     SELECT 1 FROM transactions t
     WHERE t.account_id = a.id AND t.merchant_id = m.id AND t.amount = 300.00 AND t.status = 'approved'
   );
 
--- Noah @ Indigo Air 
-INSERT INTO transactions (account_id, merchant_id, amount, currency, status, device_id)
-SELECT
-  a.id,
-  m.id,
-  10000.00, 'USD', 'approved',
-  d.id
-FROM accounts a
-JOIN customers c ON c.id = a.customer_id
-JOIN merchants m ON m.name = 'Indigo Air'
-LEFT JOIN devices d ON d.fingerprint = 'hash_xyz222'
-WHERE c.email = 'noah@example.com' AND a.account_type = 'Checking'
-  AND NOT EXISTS (
-    SELECT 1 FROM transactions t
-    WHERE t.account_id = a.id AND t.merchant_id = m.id AND t.amount = 9000.00 AND t.status = 'approved'
-  );
-
--- Ava (Savings) @ Dunkin 
+-- Sanjitha (Savings) @ Dunkin 
 INSERT INTO transactions (account_id, merchant_id, amount, currency, status, device_id)
 SELECT
   a.id,
@@ -129,24 +93,25 @@ SELECT
 FROM accounts a
 JOIN customers c ON c.id = a.customer_id
 JOIN merchants m ON m.name = 'Dunkin'
-LEFT JOIN devices d ON d.fingerprint = 'hash_abc123'
-WHERE c.email = 'ava@example.com' AND a.account_type = 'Savings'
+LEFT JOIN devices d ON d.fingerprint = 'hash_abc123' AND d.customer_id = c.id
+WHERE c.email = 'sanjitha@example.com' AND a.account_type = 'Savings'
   AND NOT EXISTS (
     SELECT 1 FROM transactions t
     WHERE t.account_id = a.id AND t.merchant_id = m.id AND t.amount = 5.00 AND t.status = 'approved'
   );
 
--- Sanjitha: Checking @ Bravo 
+-- Siri (Checking) @ Bravo 
 INSERT INTO transactions (account_id, merchant_id, amount, currency, status, device_id)
 SELECT
   a.id,
   m.id,
   25.00, 'USD', 'approved',
-  NULL
+  d.id
 FROM accounts a
 JOIN customers c ON c.id = a.customer_id
 JOIN merchants m ON m.name = 'Bravo'
-WHERE c.email = 'sanjitha@example.com' AND a.account_type = 'Checking'
+LEFT JOIN devices d ON d.fingerprint = 'hash_xyz222' AND d.customer_id = c.id
+WHERE c.email = 'siri@example.com' AND a.account_type = 'Checking'
   AND NOT EXISTS (
     SELECT 1 FROM transactions t
     WHERE t.account_id = a.id AND t.merchant_id = m.id AND t.amount = 25.00 AND t.status = 'approved'
