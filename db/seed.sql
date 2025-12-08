@@ -2,14 +2,12 @@
 INSERT INTO customers (name, email) VALUES
   ('Sanjitha Rajesh','sanjitha@example.com'),
   ('Siritha Chidipothu','siri@example.com'),
-  ('Jack Doe','jack@example.com')
 ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name;
 
 /* MERCHANTS */
 INSERT INTO merchants (name, category, risk_tier) VALUES
-  ('TechStore','Electronics','Low'),
+  ('TechStore','Electronics','Med'),
   ('Indigo Air','Airline','Med'),
-  ('Dunkin','Cafe','Low'),
   ('Bravo','Groceries','Low'),
   ('Zara','Shopping','Med')
 ON CONFLICT (name) DO NOTHING;
@@ -38,15 +36,6 @@ INSERT INTO accounts (customer_id, account_type, status)
 SELECT c.id, 'Checking', 'Active'
 FROM customers c
 WHERE c.email = 'siri@example.com'
-  AND NOT EXISTS (
-    SELECT 1 FROM accounts a WHERE a.customer_id = c.id AND a.account_type = 'Checking'
-  );
-
--- Jack: Checking
-INSERT INTO accounts (customer_id, account_type, status)
-SELECT c.id, 'Checking', 'Active'
-FROM customers c
-WHERE c.email = 'jack@example.com'
   AND NOT EXISTS (
     SELECT 1 FROM accounts a WHERE a.customer_id = c.id AND a.account_type = 'Checking'
   );
