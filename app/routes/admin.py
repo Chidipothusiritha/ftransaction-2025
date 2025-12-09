@@ -78,7 +78,7 @@ def admin_dashboard():
     _, customer_count = run_query("SELECT COUNT(*) as count FROM customers")
     _, account_count = run_query("SELECT COUNT(*) as count FROM accounts")
     _, tx_count = run_query("SELECT COUNT(*) as count FROM transactions")
-    _, alert_count = run_query("SELECT COUNT(*) as count FROM alerts WHERE status='open'")
+    _, alert_count = run_query("SELECT COUNT(*) as count FROM alerts WHERE status IN ('open', 'confirmed')")
     
     stats = {
         'customers': customer_count[0]['count'] if customer_count else 0,
@@ -103,13 +103,13 @@ def admin_dashboard():
 
     _, recent_alerts = run_query(
         """
-        SELECT a.id, a.rule_code, a.severity, a.created_ts,
+        SELECT a.id, a.rule_code, a.severity, a.status, a.created_ts,
                c.name as customer_name, t.amount, t.currency
         FROM alerts a
         JOIN transactions t ON t.id = a.transaction_id
         JOIN accounts acc ON acc.id = t.account_id
         JOIN customers c ON c.id = acc.customer_id
-        WHERE a.status = 'open'
+        WHERE a.status IN ('open', 'confirmed')
         ORDER BY a.created_ts DESC
         LIMIT 10
         """,
@@ -140,7 +140,7 @@ def admin_dashboard():
       </div>
       <div class="col-md-3">
         <div class="card p-3 bg-danger text-white">
-          <h6 class="mb-1">Open Alerts</h6>
+          <h6 class="mb-1">Pending Alerts</h6>
           <h3 class="mb-0">{{ stats.open_alerts }}</h3>
         </div>
       </div>
@@ -159,6 +159,7 @@ def admin_dashboard():
         </div>
       </div>
     </div>
+
 
     <div class="row g-3">
       <div class="col-md-6">
@@ -184,9 +185,9 @@ def admin_dashboard():
       
       <div class="col-md-6">
         <div class="card p-3">
-          <h5 class="card-title">Recent Open Alerts</h5>
+          <h5 class="card-title">Recent Pending Alerts</h5>
           <div class="table-wrap"><table class="table table-sm">
-            <thead><tr><th>ID</th><th>Customer</th><th>Rule</th><th>Severity</th><th>Amount</th></tr></thead>
+            <thead><tr><th>ID</th><th>Customer</th><th>Rule</th><th>Severity</th><th>Status</th><th>Amount</th></tr></thead>
             <tbody>
               {% for a in recent_alerts %}
                 <tr>
@@ -194,10 +195,15 @@ def admin_dashboard():
                   <td>{{a.customer_name}}</td>
                   <td><code>{{a.rule_code}}</code></td>
                   <td><span class="badge text-bg-{{ 'danger' if a.severity == 'high' else 'warning' if a.severity == 'medium' else 'secondary' }}">{{a.severity}}</span></td>
+                  <td>
+                    {% if a.status == 'open' %}<span class="badge text-bg-warning">open</span>
+                    {% elif a.status == 'confirmed' %}<span class="badge text-bg-danger">fraud</span>
+                    {% endif %}
+                  </td>
                   <td>{{a.amount}} {{a.currency}}</td>
                 </tr>
               {% endfor %}
-              {% if not recent_alerts %}<tr><td colspan="5" class="text-success">No open alerts</td></tr>{% endif %}
+              {% if not recent_alerts %}<tr><td colspan="6" class="text-success">All clear!</td></tr>{% endif %}
             </tbody>
           </table></div>
         </div>
@@ -207,6 +213,150 @@ def admin_dashboard():
     return render_page(content, stats=stats, recent_tx=recent_tx, recent_alerts=recent_alerts, show_sidebar=True)
 
 
+# ------------------------ Admin Notifications ------------------------
+
+@admin_bp.get("/admin/notifications", endpoint="admin_notifications")
+@admin_required
+def admin_notifications():
+    # Get only unread notifications
+    _, notifications = run_query(
+        """
+        SELECT n.id, n.customer_id, n.transaction_id, n.title, n.message, 
+               n.type, n.is_read, n.created_ts,
+               c.name as customer_name, c.email as customer_email
+        FROM admin_notifications n
+        LEFT JOIN customers c ON c.id = n.customer_id
+        WHERE n.is_read = FALSE
+        ORDER BY n.created_ts DESC
+        LIMIT 50
+        """
+    )
+    
+    content = """
+    <div class="mb-3">
+      <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">←  Back to Dashboard</a>
+    </div>
+    
+    <div class="card p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="card-title mb-0">📬 Pending Notifications</h3>
+        {% if notifications %}
+          <form method="post" action="{{ url_for('admin.mark_all_read') }}" class="d-inline">
+            <button class="btn btn-sm btn-success">Resolve All</button>
+          </form>
+        {% endif %}
+      </div>
+      
+      {% if notifications %}
+        <div class="list-group">
+          {% for n in notifications %}
+            <div class="list-group-item list-group-item-warning">
+              <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                  <h6 class="mb-1">
+                    {% if n.type == 'danger' %}🚨{% elif n.type == 'warning' %}⚠️{% elif n.type == 'success' %}✅{% else %}ℹ️{% endif %}
+                    {{ n.title }}
+                    <span class="badge bg-warning text-dark">NEW</span>
+                  </h6>
+                  <p class="mb-2">{{ n.message }}</p>
+                  <small class="text-muted">
+                    {{ n.created_ts }} 
+                    {% if n.customer_name %} • Customer: {{ n.customer_name }} ({{ n.customer_email }}){% endif %}
+                    {% if n.transaction_id %} • Transaction #{{ n.transaction_id }}{% endif %}
+                  </small>
+                </div>
+                <div class="ms-3">
+                  <form method="post" action="{{ url_for('admin.resolve_notification', notif_id=n.id) }}" class="d-inline">
+                    <button class="btn btn-sm btn-outline-success">Resolve</button>
+                  </form>
+                  {% if n.transaction_id %}
+                    <a href="{{ url_for('admin.transactions_page') }}" class="btn btn-sm btn-outline-primary ms-1">View Transaction</a>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-success">
+          <p class="mb-0">✅ All clear! No pending notifications.</p>
+        </div>
+      {% endif %}
+    </div>
+    """
+    return render_page(content, notifications=notifications, show_sidebar=True)
+
+
+@admin_bp.post("/admin/notifications/<int:notif_id>/read", endpoint="mark_notification_read")
+@admin_required
+def mark_notification_read(notif_id: int):
+    run_query("UPDATE admin_notifications SET is_read = TRUE WHERE id = %s", (notif_id,))
+    flash("Notification marked as read.")
+    return redirect(url_for("admin.admin_notifications"))
+
+
+@admin_bp.post("/admin/notifications/<int:notif_id>/resolve", endpoint="resolve_notification")
+@admin_required
+def resolve_notification(notif_id: int):
+    """
+    Resolve a notification by:
+    1. Marking notification as read
+    2. Finding and resolving any related alerts for that transaction
+    """
+    try:
+        # Get the transaction_id from this notification
+        _, notif_rows = run_query(
+            "SELECT transaction_id FROM admin_notifications WHERE id = %s",
+            (notif_id,)
+        )
+        
+        if notif_rows and notif_rows[0]['transaction_id']:
+            transaction_id = notif_rows[0]['transaction_id']
+            
+            # Mark notification as read
+            run_query("UPDATE admin_notifications SET is_read = TRUE WHERE id = %s", (notif_id,))
+            
+            # Resolve all alerts for this transaction that are still open or confirmed
+            run_query(
+                "UPDATE alerts SET status='cleared' WHERE transaction_id = %s AND status IN ('open', 'confirmed')",
+                (transaction_id,)
+            )
+            
+            flash("Notification resolved and related alerts cleared.")
+        else:
+            # Just mark as read if no transaction
+            run_query("UPDATE admin_notifications SET is_read = TRUE WHERE id = %s", (notif_id,))
+            flash("Notification marked as read.")
+            
+    except Exception as e:
+        flash(f"Error resolving notification: {e}")
+    
+    return redirect(url_for("admin.admin_notifications"))
+
+
+@admin_bp.post("/admin/notifications/mark-all-read", endpoint="mark_all_read")
+@admin_required
+def mark_all_read():
+    # Get all transaction IDs from unread notifications
+    _, notif_rows = run_query(
+        "SELECT DISTINCT transaction_id FROM admin_notifications WHERE is_read = FALSE AND transaction_id IS NOT NULL"
+    )
+    
+    # Mark all notifications as read
+    run_query("UPDATE admin_notifications SET is_read = TRUE WHERE is_read = FALSE")
+    
+    # Clear all related alerts
+    if notif_rows:
+        tx_ids = [row['transaction_id'] for row in notif_rows]
+        tx_ids_str = ','.join(str(tid) for tid in tx_ids)
+        run_query(
+            f"UPDATE alerts SET status='cleared' WHERE transaction_id IN ({tx_ids_str}) AND status IN ('open', 'confirmed')"
+        )
+    
+    flash("All notifications resolved and related alerts cleared.")
+    return redirect(url_for("admin.admin_notifications"))
+
+
 # ------------------------ Reports ------------------------
 
 @admin_bp.get("/admin/reports", endpoint="reports_page")
@@ -214,7 +364,7 @@ def admin_dashboard():
 def reports_page():
     content = """
     <div class="mb-3">
-      <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">← Back to Dashboard</a>
+      <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">←  Back to Dashboard</a>
     </div>
     <div class="card p-4">
       <h4 class="card-title mb-3">Download Reports</h4>
@@ -250,9 +400,17 @@ def reports_page():
 @admin_required
 def download_transactions_csv():
     _, rows = run_query("""
-        SELECT t.id, t.account_id, t.merchant_id, t.device_id, 
-               t.amount, t.currency, t.status, t.direction, t.ts,
-               c.name as customer_name, m.name as merchant_name
+        SELECT t.id,
+               t.account_id,
+               t.merchant_id,
+               t.device_id,
+               t.amount,
+               t.currency,
+               t.status,
+               t.direction,
+               t.ts,
+               c.name as customer_name,
+               m.name as merchant_name
         FROM transactions t
         JOIN accounts a ON a.id = t.account_id
         JOIN customers c ON c.id = a.customer_id
@@ -260,18 +418,33 @@ def download_transactions_csv():
         ORDER BY t.ts DESC
         LIMIT 1000
     """)
-    
+
     output = StringIO()
-    writer = csv.DictWriter(output, fieldnames=['id', 'customer_name', 'account_id', 'merchant_name', 
-                                                  'amount', 'currency', 'direction', 'status', 'ts'])
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "id",
+            "customer_name",
+            "account_id",
+            "merchant_id",
+            "device_id",
+            "merchant_name",
+            "amount",
+            "currency",
+            "direction",
+            "status",
+            "ts",
+        ],
+    )
     writer.writeheader()
     writer.writerows(rows)
-    
+
     return Response(
         output.getvalue(),
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment;filename=transactions.csv"}
+        headers={"Content-Disposition": "attachment;filename=transactions.csv"},
     )
+
 
 
 @admin_bp.get("/admin/reports/alerts.csv")
@@ -349,7 +522,7 @@ def customers_page():
     )
     content = """
     <div class="mb-3">
-      <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">← Back to Dashboard</a>
+      <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">←  Back to Dashboard</a>
     </div>
     <div class="card shadow-sm mb-3">
       <div class="card-body">
@@ -537,7 +710,7 @@ def customer_detail(customer_id: int):
     
     content = """
     <div class="mb-3">
-      <a href="{{ url_for('admin.customers_page') }}" class="btn btn-outline-secondary">← Back to Customers</a>
+      <a href="{{ url_for('admin.customers_page') }}" class="btn btn-outline-secondary">←  Back to Customers</a>
     </div>
     
     <div class="card p-4 mb-3">
@@ -571,7 +744,7 @@ def customer_detail(customer_id: int):
             <tr>
               <td>{{t.id}}</td>
               <td>{{t.account_type}}</td>
-              <td>{{t.merchant_name or '—'}}</td>
+              <td>{{t.merchant_name or 'â€”'}}</td>
               <td>{{t.amount}} {{t.currency}}</td>
               <td><span class="badge text-bg-{{ 'danger' if t.direction == 'debit' else 'success' }}">{{t.direction}}</span></td>
               <td>{{t.status}}</td>
@@ -634,7 +807,7 @@ def accounts_page():
           <div class="col-md-3">
             <label class="form-label">Customer</label>
             <select name="customer_id" class="form-select" required>
-              {% for c in customers %}<option value="{{c.id}}">{{c.id}} – {{c.name}}</option>{% endfor %}
+              {% for c in customers %}<option value="{{c.id}}">{{c.id}} â€“ {{c.name}}</option>{% endfor %}
             </select>
           </div>
           <div class="col-md-3"><label class="form-label">Type</label><input name="account_type" class="form-control" value="CHECKING"></div>
@@ -649,7 +822,7 @@ def accounts_page():
         <div class="table-wrap"><table class="table table-sm table-striped">
           <thead><tr><th>ID</th><th>Customer</th><th>Type</th><th>Balance</th><th>Status</th><th>Opened</th></tr></thead>
           <tbody>
-            {% for r in rows %}<tr><td>{{r.id}}</td><td>{{r.customer_id}} – {{r.customer_name}}</td><td>{{r.account_type}}</td><td>${{r.balance}}</td><td>{{r.status}}</td><td>{{r.opened_ts}}</td></tr>{% endfor %}
+            {% for r in rows %}<tr><td>{{r.id}}</td><td>{{r.customer_id}} â€“ {{r.customer_name}}</td><td>{{r.account_type}}</td><td>${{r.balance}}</td><td>{{r.status}}</td><td>{{r.opened_ts}}</td></tr>{% endfor %}
             {% if not rows %}<tr><td colspan="6" class="text-muted">None yet.</td></tr>{% endif %}
           </tbody></table></div>
       </div>
@@ -758,7 +931,7 @@ def devices_page():
             <label class="form-label">Customer</label>
             <select name="customer_id" class="form-select">
               <option value="">(none)</option>
-              {% for c in customers %}<option value="{{c.id}}">{{c.id}} – {{c.name}}</option>{% endfor %}
+              {% for c in customers %}<option value="{{c.id}}">{{c.id}} â€“ {{c.name}}</option>{% endfor %}
             </select>
           </div>
           <div class="col-md-5"><label class="form-label">Fingerprint</label><input name="fingerprint" class="form-control" required></div>
@@ -773,7 +946,7 @@ def devices_page():
         <div class="table-wrap"><table class="table table-sm table-striped">
           <thead><tr><th>ID</th><th>Customer</th><th>Fingerprint</th><th>Label</th><th>First Seen</th><th>Last Seen</th></tr></thead>
           <tbody>
-            {% for r in rows %}<tr><td>{{r.id}}</td><td>{{r.customer_id}} – {{r.customer_name}}</td><td class="monospace">{{r.fingerprint}}</td><td>{{r.label}}</td><td>{{r.first_seen_ts}}</td><td>{{r.last_seen_ts}}</td></tr>{% endfor %}
+            {% for r in rows %}<tr><td>{{r.id}}</td><td>{{r.customer_id}} â€“ {{r.customer_name}}</td><td class="monospace">{{r.fingerprint}}</td><td>{{r.label}}</td><td>{{r.first_seen_ts}}</td><td>{{r.last_seen_ts}}</td></tr>{% endfor %}
             {% if not rows %}<tr><td colspan="6" class="text-muted">None yet.</td></tr>{% endif %}
           </tbody></table></div>
       </div>
@@ -831,10 +1004,10 @@ def transactions_page():
 
     content = """
     <div class="mb-3">
-      <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">← Back to Dashboard</a>
+      <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">←  Back to Dashboard</a>
     </div>
     <div class="row g-3">
-      <div class="col-12 col-xl-7">
+      <div class="col-12">
         <div class="card shadow-sm">
           <div class="card-body">
             <h4 class="card-title mb-3">Add Transaction</h4>
@@ -856,13 +1029,6 @@ def transactions_page():
               <div class="col-12"><button class="btn btn-primary w-100">Create &amp; Check Alerts</button></div>
             </form>
           </div>
-        </div>
-      </div>
-
-      <div class="col-12 col-xl-5">
-        <div class="alert alert-info small">
-          Simulate transactions from different accounts, devices, and merchants.
-          Alerts will be raised automatically.
         </div>
       </div>
     </div>
@@ -960,7 +1126,7 @@ def alerts_page():
         JOIN transactions t ON t.id = a.transaction_id
         JOIN accounts acc ON acc.id = t.account_id
         JOIN customers c ON c.id = acc.customer_id
-        WHERE a.status = 'open'
+        
         ORDER BY a.created_ts DESC
         LIMIT %s
         """,
@@ -969,13 +1135,13 @@ def alerts_page():
 
     content = """
     <div class="mb-3">
-      <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">← Back to Dashboard</a>
+      <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary">←  Back to Dashboard</a>
     </div>
     <div class="card shadow-sm">
       <div class="card-body">
-        <h4 class="card-title mb-3">Open Alerts</h4>
+        <h4 class="card-title mb-3">All Alerts</h4>
         <p class="text-muted small mb-3">
-          These alerts are currently <strong>open</strong>. Click <em>Resolve</em> once investigated.
+          Recent alerts from the fraud detection system. Statuses: <span class="badge text-bg-warning">open</span> <span class="badge text-bg-success">cleared</span> <span class="badge text-bg-danger">fraud</span>
         </p>
         <div class="table-wrap"><table class="table table-sm table-striped align-middle">
           <thead>
@@ -991,16 +1157,29 @@ def alerts_page():
                   {% elif a.severity == 'medium' %}<span class="badge text-bg-warning text-dark">{{a.severity}}</span>
                   {% else %}<span class="badge text-bg-secondary">{{a.severity}}</span>{% endif %}
                 </td>
-                <td>{{a.amount}} {{a.currency}}</td><td>{{a.status}}</td><td>{{a.created_ts}}</td>
+                <td>{{a.amount}} {{a.currency}}</td>
                 <td>
-                  <form method="post" action="{{ url_for('admin.resolve_alert') }}" class="d-inline">
-                    <input type="hidden" name="alert_id" value="{{a.id}}">
-                    <button class="btn btn-sm btn-outline-success">Resolve</button>
-                  </form>
+                  {% if a.status == 'open' %}<span class="badge text-bg-warning">open</span>
+                  {% elif a.status == 'cleared' %}<span class="badge text-bg-success">cleared</span>
+                  {% elif a.status == 'confirmed' %}<span class="badge text-bg-danger">fraud</span>
+                  {% else %}<span class="badge text-bg-secondary">{{a.status}}</span>{% endif %}
+                </td>
+                <td>{{a.created_ts}}</td>
+                <td>
+                  {% if a.status == 'open' %}
+                    <form method="post" action="{{ url_for('admin.resolve_alert') }}" class="d-inline">
+                      <input type="hidden" name="alert_id" value="{{a.id}}">
+                      <button class="btn btn-sm btn-outline-success">Resolve</button>
+                    </form>
+                  {% elif a.status == 'confirmed' %}
+                    <span class="text-danger small fw-bold">Fraud</span>
+                  {% else %}
+                    <span class="text-success small">Resolved</span>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
-            {% if not rows %}<tr><td colspan="9" class="text-muted">No open alerts 🎉</td></tr>{% endif %}
+            {% if not rows %}<tr><td colspan="9" class="text-muted">No open alerts ðŸŽ‰</td></tr>{% endif %}
           </tbody>
         </table></div>
       </div>
@@ -1014,7 +1193,7 @@ def alerts_page():
 def resolve_alert():
     try:
         alert_id = int(request.form.get("alert_id"))
-        run_query("UPDATE alerts SET status='resolved' WHERE id=%s", (alert_id,))
+        run_query("UPDATE alerts SET status='cleared' WHERE id=%s", (alert_id,))
         flash(f"Alert {alert_id} resolved.")
     except Exception as e:
         flash(f"Error: {e}")

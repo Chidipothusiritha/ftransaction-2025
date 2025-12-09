@@ -247,9 +247,14 @@ CREATE TABLE IF NOT EXISTS customer_auth (
   customer_id    BIGINT PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
   email          CITEXT UNIQUE NOT NULL,
   password_hash  TEXT NOT NULL,
+  pin_hash       TEXT,
   created_ts     TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_login_ts  TIMESTAMPTZ
 );
+
+-- Add pin_hash column if it doesn't exist
+ALTER TABLE IF EXISTS customer_auth
+  ADD COLUMN IF NOT EXISTS pin_hash TEXT;
 
 -- Idempotent unique constraint on merchants.name
 DO $$
@@ -272,3 +277,36 @@ BEGIN
       ADD CONSTRAINT accounts_customer_type_key UNIQUE (customer_id, account_type);
   END IF;
 END $$;
+
+CREATE TABLE IF NOT EXISTS cards (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    card_type   VARCHAR(10) NOT NULL,          -- 'CREDIT' or 'DEBIT'
+    name_on_card TEXT NOT NULL,
+    card_number  VARCHAR(16) NOT NULL,
+    expiry_month INTEGER NOT NULL,
+    expiry_year  INTEGER NOT NULL,
+    cvv          VARCHAR(3) NOT NULL,
+    created_ts   TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+);
+
+-- Add last4 and cvv_mask columns if they don't exist
+ALTER TABLE IF EXISTS cards
+  ADD COLUMN IF NOT EXISTS last4 VARCHAR(4);
+ALTER TABLE IF EXISTS cards
+  ADD COLUMN IF NOT EXISTS cvv_mask VARCHAR(3);
+
+-- Admin notifications table
+CREATE TABLE IF NOT EXISTS admin_notifications (
+  id SERIAL PRIMARY KEY,
+  customer_id INT REFERENCES customers(id) ON DELETE CASCADE,
+  transaction_id INT REFERENCES transactions(id) ON DELETE CASCADE,
+  title VARCHAR(200) NOT NULL,
+  message TEXT NOT NULL,
+  type VARCHAR(50) NOT NULL DEFAULT 'info',  -- 'info', 'warning', 'danger', 'success'
+  is_read BOOLEAN NOT NULL DEFAULT FALSE,
+  created_ts TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_admin_notif_unread ON admin_notifications (is_read, created_ts DESC);

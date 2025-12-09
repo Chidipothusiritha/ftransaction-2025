@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List, Tuple
 
 from ..db import run_query, table_exists, table_columns
 
@@ -219,6 +219,68 @@ def run_db_rules(transaction_id: int) -> None:
             pass
 
 
+# ------------------------ Python rule engine ------------------------
+
+def run_rules_for_transaction(transaction_id: int) -> None:
+    """
+    Evaluate Python-based rules (amount threshold, spike vs rolling avg)
+    and then call DB-based rules.
+    """
+    try:
+        # Load the transaction
+        _, rows = run_query(
+            """
+            SELECT
+              t.id,
+              t.account_id,
+              t.merchant_id,
+              t.amount,
+              t.currency,
+              t.direction,
+              t.status,
+              t.ts
+            FROM transactions t
+            WHERE t.id = %s
+            """,
+            (transaction_id,),
+        )
+        if not rows:
+            return
+
+        tx = rows[0]
+        account_id = tx["account_id"]
+        merchant_id = tx["merchant_id"]
+        amount = float(tx["amount"])
+        direction = (tx["direction"] or "").lower()
+
+        # Load rule config for this account
+        cfg = get_alert_rule_for_account(account_id)
+        threshold = float(cfg.get("amount_threshold", DEFAULT_THRESHOLD))
+        spike_mult = float(cfg.get("spike_multiplier", DEFAULT_SPIKE_MULTIPLIER))
+        lookback = int(cfg.get("lookback_days", DEFAULT_LOOKBACK_DAYS))
+
+        risk_tier = _merchant_risk_tier(merchant_id)
+
+        # 1) Simple amount threshold rule (only for debits)
+        if direction == "debit" and amount >= threshold:
+            sev = _severity_for_threshold(amount, threshold, risk_tier)
+            create_alert(transaction_id, "AMOUNT_THRESHOLD", sev)
+
+        # 2) Spike vs rolling average rule
+        if lookback > 0:
+            avg = rolling_avg_amount(account_id, lookback)
+            if avg > 0 and amount >= spike_mult * avg:
+                sev = _severity_for_spike_vs_avg(amount, avg, risk_tier)
+                create_alert(transaction_id, "SPIKE_VS_AVG", sev)
+
+        # 3) DB-backed rules (new device, velocity 3-in-2min, etc.)
+        run_db_rules(transaction_id)
+
+    except Exception:
+        # Completely best-effort: do not propagate to the UI
+        pass
+
+
 # ------------------------ Main insert_transaction ------------------------
 
 def insert_transaction(
@@ -229,91 +291,73 @@ def insert_transaction(
     currency: str,
     status: str,
     ts_iso: Optional[str],
-    direction: str = "debit",
+    direction: str,
 ) -> int:
-
     """
-    Insert a transaction, run alert rules, and return the new transaction id.
+    Insert a transaction, update the account balance, and run alert rules.
 
-    Rules:
-      1) Threshold rule (THRESHOLD_EXCEEDED) — risk-tier aware
-      2) Spike vs rolling average (SPIKE_VS_ROLLING_AVG) — risk-tier aware
-      3) DB-backed velocity + new-device rules via rule_velocity_3in2min / rule_new_device
+    IMPORTANT:
+      - debit  => balance is DECREASED  (money going out)
+      - credit => balance is INCREASED (money coming in)
     """
-    ts = ts_iso or datetime.utcnow().isoformat()
-    status_norm = (status or "approved").lower()
-    direction_norm = (direction or "debit").lower()
-    if direction_norm not in ("debit", "credit"):
-        direction_norm = "debit"
+    direction = (direction or "debit").lower()
+    if direction not in ("debit", "credit"):
+        direction = "debit"
 
-    # Insert transaction
-    _, rows = run_query(
+    # 1. Insert transaction
+    if ts_iso:
+        sql = """
+            INSERT INTO transactions (
+                account_id, merchant_id, device_id,
+                amount, currency, direction, status, ts
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
         """
-        INSERT INTO transactions (
-          account_id, merchant_id, device_id,
-          amount, currency, status, ts, direction
-        )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-        RETURNING id
-        """,
-        (
+        params = (
             account_id,
             merchant_id,
             device_id,
             amount,
             currency,
-            status_norm,
-            ts,
-            direction_norm,
-        ),
-    )
+            direction,
+            status,
+            ts_iso,
+        )
+    else:
+        sql = """
+            INSERT INTO transactions (
+                account_id, merchant_id, device_id,
+                amount, currency, direction, status, ts
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())
+            RETURNING id
+        """
+        params = (
+            account_id,
+            merchant_id,
+            device_id,
+            amount,
+            currency,
+            direction,
+            status,
+        )
 
+    _, rows = run_query(sql, params)
     tx_id = rows[0]["id"]
 
-    # Update running balance on the account:
-    # debit  → subtract, credit → add
-    balance_delta = amount if direction_norm == "credit" else -amount
+    # 2. Update account balance based on direction
+    delta = -amount if direction == "debit" else amount
     run_query(
-        """
-        UPDATE accounts
-        SET balance = COALESCE(balance, 0) + %s
-        WHERE id = %s
-        """,
-        (balance_delta, account_id),
+        "UPDATE accounts SET balance = balance + %s WHERE id = %s",
+        (delta, account_id),
     )
 
-
-    # Fetch per-account rule settings
-    rule = get_alert_rule_for_account(account_id)
-    thr = float(rule["amount_threshold"])
-    mult = float(rule["spike_multiplier"])
-    lb = int(rule["lookback_days"])
-
-    # Risk tier based on merchant
-    risk_tier = _merchant_risk_tier(merchant_id)
-
-    # 1) Threshold rule (Python-side)
-    if amount >= thr:
-        sev = _severity_for_threshold(amount, thr, risk_tier)
-        create_alert(
-            transaction_id=tx_id,
-            rule_code="THRESHOLD_EXCEEDED",
-            severity=sev,
-            status="open",
-        )
-
-    # 2) Rolling-average spike rule (Python-side)
-    avg_amt = rolling_avg_amount(account_id, lb)
-    if avg_amt > 0 and amount >= (avg_amt * mult):
-        sev = _severity_for_spike_vs_avg(amount, avg_amt, risk_tier)
-        create_alert(
-            transaction_id=tx_id,
-            rule_code="SPIKE_VS_ROLLING_AVG",
-            severity=sev,
-            status="open",
-        )
-
-    # 3) DB-backed rules (velocity + new device, etc.)
-    run_db_rules(tx_id)
+    # 3. Run rules / create alerts
+    try:
+        run_rules_for_transaction(tx_id)
+    except Exception:
+        # don't break the UI if rules fail
+        pass
 
     return tx_id
