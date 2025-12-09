@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Financial Transaction Monitoring System — Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- FTMS login CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ftms_login.css') }}">
+  
+  <!-- Fallback inline styles in case CSS doesn't load -->
+  <style>
+    body, html {
+        margin: 0;
+        padding: 0;
+        font-family: "Inter", "Poppins", Arial, sans-serif;
+        background: #f5f6f9;
+    }
+    .ftms-login-page {
+        display: flex;
+        height: 100vh;
+        width: 100vw;
+    }
+    .ftms-left-panel {
+        background: linear-gradient(135deg, #262b9b, #5138d3);
+        color: white;
+        width: 50%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 3rem;
+    }
+    .ftms-logo-mark {
+        font-size: 42px;
+        font-weight: 600;
+        margin-bottom: 30px;
+    }
+    .ftms-greeting {
+        font-size: 60px;
+        margin: 0;
+        font-weight: 600;
+    }
+    .ftms-product-name {
+        font-size: 28px;
+        font-weight: 700;
+        margin-top: 15px;
+    }
+    .ftms-description {
+        margin-top: 18px;
+        line-height: 1.5;
+        opacity: 0.9;
+    }
+    .ftms-footer {
+        font-size: 12px;
+        opacity: 0.7;
+    }
+    .ftms-right-panel {
+        width: 50%;
+        background: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 40px;
+    }
+    .ftms-right-inner {
+        width: 100%;
+        max-width: 380px;
+    }
+    .ftms-title {
+        font-size: 28px;
+        margin-bottom: 30px;
+        font-weight: 700;
+    }
+    .ftms-label {
+        display: block;
+        width: 100%;
+        margin-bottom: 15px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    .ftms-input {
+        width: 100%;
+        margin-top: 6px;
+        padding: 10px 12px;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+    .ftms-input:focus {
+        border-color: #5a42ff;
+        outline: none;
+    }
+    .ftms-actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 15px;
+    }
+    .ftms-btn {
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+        border: none;
+        text-align: center;
+        display: inline-block;
+        flex: 1;
+    }
+    .ftms-btn-primary {
+        background: #262b9b;
+        color: white;
+    }
+    .ftms-btn-primary:hover {
+        background: #1b206f;
+    }
+    .ftms-btn-secondary {
+        background: white;
+        border: 2px solid #262b9b;
+        color: #262b9b;
+    }
+    .ftms-btn-secondary:hover {
+        background: #262b9b;
+        color: white;
+    }
+    .ftms-links-row {
+        margin-top: 12px;
+        font-size: 13px;
+    }
+    .ftms-link {
+        margin-right: 10px;
+        text-decoration: none;
+        color: #262b9b;
+    }
+    .ftms-link:hover {
+        text-decoration: underline;
+    }
+    .alert {
+        margin-bottom: 20px;
+        padding: 10px;
+        background: #e3f2fd;
+        border-radius: 6px;
+    }
+    .alert p {
+        margin: 0;
+    }
+    @media(max-width: 900px) {
+        .ftms-login-page {
+            flex-direction: column;
+            height: auto;
+        }
+        .ftms-left-panel,
+        .ftms-right-panel {
+            width: 100%;
+            height: auto;
+            padding: 2rem;
+        }
+    }
+  </style>
+</head>
+<body>
+  <div class="ftms-login-page">
+
+    <!-- Left blue panel -->
+    <div class="ftms-left-panel">
+      <div class="ftms-left-content">
+        <div class="ftms-logo-mark">*</div>
+        <h1 class="ftms-greeting">Welcome</h1>
+        <h2 class="ftms-product-name">Financial Transaction Monitoring System</h2>
+        <p class="ftms-description">
+          Securely track, analyze, and manage all your financial activities
+          and transactions with real-time insights.
+        </p>
+      </div>
+      <footer class="ftms-footer">
+        © 2025 Your Company Name. All rights reserved.
+      </footer>
+    </div>
+
+    <!-- Right white panel -->
+    <div class="ftms-right-panel">
+      <div class="ftms-right-inner">
+        <header class="ftms-header">
+          <h2 class="ftms-title">FTMS Login</h2>
+        </header>
+
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert alert-info">
+              {% for message in messages %}
+                <p>{{ message }}</p>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <!-- User login form -->
+        <form method="post"
+              action="{{ url_for('portal.auth_do_login') }}"
+              class="ftms-form">
+
+          <label class="ftms-label">
+            Email
+            <input type="email" name="email" required class="ftms-input">
+          </label>
+
+          <label class="ftms-label">
+            Password
+            <input type="password" name="password" required class="ftms-input">
+          </label>
+
+          <div class="ftms-actions">
+            <!-- Primary: User Login (submits this form) -->
+            <button type="submit" class="ftms-btn ftms-btn-primary">
+              User Login
+            </button>
+
+            <!-- Secondary: Admin Login (navigates to admin login page) -->
+            <a href="{{ url_for('admin.admin_login') }}"
+               class="ftms-btn ftms-btn-secondary">
+              Admin Login
+            </a>
+          </div>
+
+          <div class="ftms-links-row">
+            <a href="#" class="ftms-link">Forgot password?</a>
+            <a href="{{ url_for('portal.auth_signup') }}" class="ftms-link">
+              Create account
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

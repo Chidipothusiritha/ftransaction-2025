@@ -228,8 +228,10 @@ def insert_transaction(
     amount: float,
     currency: str,
     status: str,
-    ts_iso: Optional[str] = None,
+    ts_iso: Optional[str],
+    direction: str = "debit",
 ) -> int:
+
     """
     Insert a transaction, run alert rules, and return the new transaction id.
 
@@ -240,18 +242,46 @@ def insert_transaction(
     """
     ts = ts_iso or datetime.utcnow().isoformat()
     status_norm = (status or "approved").lower()
+    direction_norm = (direction or "debit").lower()
+    if direction_norm not in ("debit", "credit"):
+        direction_norm = "debit"
 
     # Insert transaction
     _, rows = run_query(
         """
-        INSERT INTO transactions
-            (account_id, merchant_id, device_id, amount, currency, status, ts)
-        VALUES (%s,%s,%s,%s,%s,%s,%s)
+        INSERT INTO transactions (
+          account_id, merchant_id, device_id,
+          amount, currency, status, ts, direction
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING id
         """,
-        (account_id, merchant_id, device_id, amount, currency, status_norm, ts),
+        (
+            account_id,
+            merchant_id,
+            device_id,
+            amount,
+            currency,
+            status_norm,
+            ts,
+            direction_norm,
+        ),
     )
+
     tx_id = rows[0]["id"]
+
+    # Update running balance on the account:
+    # debit  → subtract, credit → add
+    balance_delta = amount if direction_norm == "credit" else -amount
+    run_query(
+        """
+        UPDATE accounts
+        SET balance = COALESCE(balance, 0) + %s
+        WHERE id = %s
+        """,
+        (balance_delta, account_id),
+    )
+
 
     # Fetch per-account rule settings
     rule = get_alert_rule_for_account(account_id)

@@ -1,0 +1,184 @@
+/* Admin Login Page Styling - FTMS Style */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: "Inter", "Poppins", Arial, sans-serif;
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e22ce 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.auth-wrapper {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    width: 100%;
+}
+
+.auth-card {
+    background: white;
+    border-radius: 16px;
+    padding: 3rem;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.auth-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: linear-gradient(90deg, #1d6efd, #5138d3, #7e22ce);
+}
+
+.brand-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1e3c72;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.text-muted {
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.95rem;
+    margin-bottom: 2rem;
+}
+
+.mb-4 {
+    margin-bottom: 2rem;
+}
+
+.mb-3 {
+    margin-bottom: 1.5rem;
+}
+
+.form-label {
+    display: block;
+    font-weight: 500;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e0e6ed;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #5138d3;
+    box-shadow: 0 0 0 3px rgba(81, 56, 211, 0.1);
+}
+
+.d-grid {
+    display: grid;
+}
+
+.gap-2 {
+    gap: 0.75rem;
+}
+
+.btn {
+    padding: 13px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #1d6efd, #5138d3);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #0d57d5, #3d2aa3);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(29, 110, 253, 0.3);
+}
+
+.btn-ghost {
+    background: #f8f9fa;
+    border: 2px solid #dee2e6;
+    color: #495057;
+    font-weight: 500;
+}
+
+.btn-ghost:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.back-link {
+    font-size: 0.9rem;
+    display: inline-block;
+    margin-top: 1.5rem;
+    color: #5138d3;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.back-link:hover {
+    color: #3d2aa3;
+    text-decoration: underline;
+}
+
+.alert {
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    border-left: 4px solid;
+}
+
+.alert-info {
+    background-color: #e3f2fd;
+    border-color: #1d6efd;
+    color: #0d47a1;
+}
+
+.alert p {
+    margin: 0;
+}
+
+.mt-2 {
+    margin-top: 0.75rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 576px) {
+    .auth-card {
+        padding: 2rem 1.5rem;
+    }
+
+    .brand-title {
+        font-size: 1.25rem;
+    }
+
+    .btn {
+        padding: 11px 20px;
+        font-size: 0.95rem;
+    }
+}

@@ -1,29 +1,38 @@
 # app/__init__.py
 
-import os
-from flask import Flask
+from __future__ import annotations
 
+from flask import Flask
 from .ui import init_ui
 
 
-def create_app() -> Flask:
+def create_app():
     """
-    Application factory. Creates the Flask app, loads config,
-    and registers all blueprints.
+    Create and configure the Flask application.
     """
-    app = Flask(__name__)
-    app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret")
+    app = Flask(
+        __name__,
+        template_folder='templates',
+        static_folder='static',
+        static_url_path='/static'
+    )
 
-    # Attach UI helpers / Jinja globals
+    # Load configuration
+    app.config.from_mapping(
+        SECRET_KEY='dev-secret-key-change-in-production',
+        DATABASE_URL='postgresql://ftms_user:ftms_password@localhost:5432/ftms_db',
+    )
+
+    # Initialize UI
     init_ui(app)
 
-    # Import and register blueprints
-    from .routes.portal import portal_bp
+    # Register blueprints
     from .routes.admin import admin_bp
+    from .routes.portal import portal_bp
     from .routes.api import api_bp
 
-    app.register_blueprint(portal_bp)   # /, /start, /auth/*, /portal
-    app.register_blueprint(admin_bp)    # /admin/login, /customers, /transactions, ...
-    app.register_blueprint(api_bp)      # /api/alerts, ...
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(portal_bp)
+    app.register_blueprint(api_bp)
 
     return app

@@ -23,8 +23,11 @@ CREATE TABLE IF NOT EXISTS accounts (
   customer_id INT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   account_type VARCHAR(20) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'Active',
+  balance NUMERIC(14,2) NOT NULL DEFAULT 0,   -- NEW
   opened_ts TIMESTAMP NOT NULL DEFAULT NOW()
 );
+ALTER TABLE IF EXISTS accounts
+  ADD COLUMN IF NOT EXISTS balance NUMERIC(14,2) NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS merchants (
   id SERIAL PRIMARY KEY,
@@ -42,6 +45,22 @@ CREATE TABLE IF NOT EXISTS transactions (
   ts TIMESTAMP NOT NULL DEFAULT NOW(),
   status txn_status_enum NOT NULL DEFAULT 'approved'
 );
+
+-- ============================
+-- TRANSACTION DIRECTION SUPPORT
+-- ============================
+
+-- 1) New enum for direction (idempotent)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transaction_direction_enum') THEN
+    CREATE TYPE transaction_direction_enum AS ENUM ('debit', 'credit');
+  END IF;
+END $$;
+
+-- 2) Add column to transactions if missing
+ALTER TABLE IF EXISTS transactions
+  ADD COLUMN IF NOT EXISTS direction transaction_direction_enum NOT NULL DEFAULT 'debit';
 
 CREATE TABLE IF NOT EXISTS alerts (
   id SERIAL PRIMARY KEY,
