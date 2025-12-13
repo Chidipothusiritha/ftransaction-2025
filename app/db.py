@@ -27,7 +27,7 @@ def get_conn():
     return psycopg.connect(
         host=os.getenv("PGHOST", "127.0.0.1"),
         port=os.getenv("PGPORT", "5432"),
-        dbname=os.getenv("PGDATABASE", "frauddb"),
+        dbname=os.getenv("PGDATABASE", "ftms_db"),
         user=os.getenv("PGUSER", os.getenv("USER")),
         password=os.getenv("PGPASSWORD"),
         row_factory=dict_row,
@@ -54,13 +54,13 @@ def run_query(sql: str, params: tuple = ()) -> Tuple[List[str], List[Dict[str, A
 
 def table_exists(schema: str, table: str) -> bool:
     """
-    Check information_schema.tables for given schema.table.
+    Check pg_tables for given schema.table.
     """
     _, rows = run_query(
         """
         SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema=%s AND table_name=%s
+        FROM pg_tables
+        WHERE schemaname=%s AND tablename=%s
         """,
         (schema, table),
     )

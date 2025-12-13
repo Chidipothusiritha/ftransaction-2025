@@ -12,11 +12,9 @@ def _get_or_create_device(
     label: Optional[str] = None,
 ) -> int:
     """
-    Use DB function get_or_create_device if available, otherwise
-    fall back to a manual SELECT/INSERT pattern.
+    Use DB function get_or_create_device if available, otherwise fallback.
     """
     with get_conn() as conn, conn.cursor() as cur:
-        # First try the Postgres helper function from schema.sql
         try:
             cur.execute(
                 "SELECT get_or_create_device(%s, %s, %s);",
@@ -29,7 +27,7 @@ def _get_or_create_device(
         except Exception:
             conn.rollback()
 
-        # Fallback: manual logic
+        # Fallback
         cur.execute(
             """
             SELECT id FROM devices
@@ -62,7 +60,7 @@ def _get_or_create_device(
 
 def ensure_portal_device(customer_id: int) -> int:
     """
-    Ensure there is a stable 'web portal' device for this customer and return its id.
+    Ensure there is a stable 'web portal' device for this customer.
     """
     fingerprint = f"web_portal_{customer_id}"
     label = "Web Portal"

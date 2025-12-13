@@ -6,7 +6,6 @@ import os
 import re
 from functools import wraps
 from typing import Callable, Optional
-from .services.devices import ensure_portal_device
 
 from flask import session, redirect, url_for, flash
 
@@ -53,9 +52,8 @@ def login_required(fn: Callable):
     def _inner(*args, **kwargs):
         if not current_customer_id():
             flash("Please sign in.")
-            return redirect(url_for("auth_login"))
+            return redirect(url_for("portal.auth_login"))  # FIXED: Added "portal." prefix
         return fn(*args, **kwargs)
-
     return _inner
 
 

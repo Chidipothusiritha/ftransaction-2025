@@ -1,19 +1,41 @@
-version: '3.9'
+version: "3.8"
+
 services:
   db:
-    image: postgres:16
-    container_name: frauddb
+    image: postgres:16-alpine
     restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ftms_db}
+      POSTGRES_USER: ${POSTGRES_USER:-ftms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ftms_password}
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_DB: frauddb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
-      - ./db/seed.sql:/docker-entrypoint-initdb.d/20-seed.sql:ro
+      - ./db/seed_new.sql:/docker-entrypoint-initdb.d/20-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 5001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ftms_user}:${POSTGRES_PASSWORD:-ftms_password}@db:5432/${POSTGRES_DB:-ftms_db}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+    ports:
+      - "5001:5001"
+    # DEV ONLY (optional): live-edit code without rebuilding image
+    # volumes:
+    #   - .:/app
 
 volumes:
   pg_data:
